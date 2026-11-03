@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SUN.exe</title>
+<meta name="theme-color" content="#07090c">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#07090c;font-family:"SF Mono",Menlo,Consolas,"Courier New",monospace;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;cursor:pointer}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#term{position:fixed;top:max(20px,env(safe-area-inset-top));left:16px;right:16px;max-width:620px;font-size:clamp(13px,3.4vw,16px);line-height:1.7;color:#a9bdb2;text-shadow:0 0 6px rgba(120,255,170,.35);pointer-events:none;transition:opacity 1.4s}
+.typing::after{content:"█";animation:blink 1s steps(1) infinite}
+#hint{position:fixed;left:0;right:0;bottom:max(36px,calc(env(safe-area-inset-bottom) + 20px));text-align:center;color:#d3ded8;font-size:clamp(13px,3.6vw,16px);letter-spacing:.08em;opacity:0;transition:opacity .8s;pointer-events:none}
+#hint.on{opacity:1}
+#hint span{animation:pulse 2s ease-in-out infinite}
+#bar{width:min(260px,60vw);height:3px;margin:12px auto 0;background:rgba(255,255,255,.12);border-radius:2px;overflow:hidden}
+#bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ff9a1f,#ffe066)}
+#msg{position:fixed;left:0;right:0;bottom:0;padding:48px 16px max(44px,calc(env(safe-area-inset-bottom) + 24px));text-align:center;color:#fff3c4;pointer-events:none}
+#msg::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(transparent,rgba(10,5,0,.75) 45%);opacity:0;transition:opacity 1.5s}
+#msg.on::before{opacity:1}
+#msg h1{font-weight:700;font-size:clamp(20px,5.6vw,36px);line-height:1.4;min-height:2.8em;text-shadow:0 0 18px rgba(255,190,60,.8),0 0 2px #000}
+#msg p{margin-top:14px;font-size:clamp(12px,3.2vw,14px);color:#ffd98a;letter-spacing:.06em;opacity:0;transition:opacity 1.5s}
+#msg p.on{opacity:.85}
+@keyframes blink{50%{opacity:0}}
+@keyframes pulse{50%{opacity:.4}}
+</style>
+</head>
+<body>
+<canvas id="rain"></canvas>
+<canvas id="fx"></canvas>
+<div id="term"></div>
+<div id="hint"><span>[ зажми экран и держи ]</span><div id="bar"><i></i></div></div>
+<div id="msg"><h1 id="title"></h1><p id="sign">сплетено из кода · специально для тебя</p></div>
+<script>
+// Тексты — меняй как хочешь
+const INTRO = [
+  '> подключение: KIRILL MINTSEV ......... OK',
+  '> прогноз на сегодня: пасмурно ☁',
+  '> настроение: могло быть и солнечнее',
+  '> найдено решение: SUN.exe',
+];
+const MESSAGE = 'Даже если сегодня пасмурно —\nя дарю тебе солнышко ☀';
+const HOLD_MS = 3500;
+
+const rain = document.getElementById('rain'), rctx = rain.getContext('2d');
+const fx = document.getElementById('fx'), fctx = fx.getContext('2d');
+const term = document.getElementById('term'), hint = document.getElementById('hint');
+const barFill = document.querySelector('#bar i');
+const GLYPHS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモラリルレロワン0123456789MINTSEV';
+
+let W, H, size, drops, clouds;
+let warm = 0, holding = false, ready = false, done = false;
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  for (const c of [rain, fx]) { c.width = W * dpr; c.height = H * dpr; c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0); }
+  size = Math.max(14, Math.round(W / 48));
+  drops = Array.from({ length: Math.ceil(W / size) }, () => ({ y: -Math.random() * H / size * 1.5, v: .5 + Math.random() * .6, acc: 0 }));
+  clouds = Array.from({ length: 5 }, (_, i) => ({ x: Math.random() * W, y: Math.random() * H * .6, r: (.25 + Math.random() * .3) * Math.max(W, H), side: i % 2 ? 1 : -1 }));
+  rctx.fillStyle = '#07090c'; rctx.fillRect(0, 0, W, H);
+}
+
+// Дождь из кода: серый, пока пасмурно, золотой — когда выходит солнце
+function rainStep() {
+  const w = ease(warm);
+  rctx.fillStyle = `rgba(${lerp(7, 22, w) | 0},${lerp(9, 10, w) | 0},${lerp(12, 2, w) | 0},.07)`;
+  rctx.fillRect(0, 0, W, H);
+  rctx.font = `${size}px monospace`;
+  drops.forEach((d, i) => {
+    d.acc += d.v;
+    if (d.acc < 1) return;
+    d.acc -= 1;
+    const y = d.y * size, head = Math.random() < .12;
+    const c = head ? [lerp(205, 255, w), lerp(220, 244, w), lerp(214, 200, w)] : [lerp(120, 255, w), lerp(150, 168, w), lerp(140, 40, w)];
+    rctx.fillStyle = `rgb(${c.map(v => v | 0).join(',')})`;
+    rctx.fillText(GLYPHS[Math.random() * GLYPHS.length | 0], i * size, y);
+    d.y++;
+    if (y > H && Math.random() > .975) d.y = 0;
+  });
+}
+
+// Плетёный шнур: тёмный край, тело и блик — как сутаж в масках
+function cord(pts, wd, alpha) {
+  const layers = [['rgba(110,50,0,' + alpha + ')', wd * 1.4, 0], ['rgba(255,176,40,' + alpha + ')', wd, 0], ['rgba(255,244,200,' + alpha * .9 + ')', wd * .28, -wd * .22]];
+  for (const [col, lw, off] of layers) {
+    fctx.strokeStyle = col; fctx.lineWidth = lw;
+    fctx.beginPath();
+    pts.forEach(([x, y], i) => i ? fctx.lineTo(x + off, y + off) : fctx.moveTo(x + off, y + off));
+    fctx.stroke();
+  }
+}
+
+function drawSun(t) {
+  const s = ease(warm);
+  if (s < .002) return;
+  const cx = W / 2, cy = H * .42;
+  const R = Math.min(W, H) * .16 * s * (done ? 1 + .025 * Math.sin(t / 700) : 1);
+  fctx.lineCap = fctx.lineJoin = 'round';
+
+  const glow = fctx.createRadialGradient(cx, cy, 0, cx, cy, R * 3.4);
+  glow.addColorStop(0, `rgba(255,205,90,${.4 * s})`);
+  glow.addColorStop(1, 'rgba(255,150,30,0)');
+  fctx.fillStyle = glow; fctx.fillRect(0, 0, W, H);
+
+  const N = 14, spin = t * .00012;
+  for (let k = 0; k < N; k++) {
+    const a = k / N * Math.PI * 2 + spin, len = k % 2 ? 1.95 : 1.7;
+    const ca = Math.cos(a), sa = Math.sin(a), pts = [];
+    for (let j = 0; j <= 40; j++) {
+      const u = j / 40, r = R * lerp(1.2, len, u), wig = Math.sin(u * Math.PI * 5 + t * .002 + k) * R * .08 * (1 - u * .4);
+      pts.push([cx + ca * r - sa * wig, cy + sa * r + ca * wig]);
+    }
+    cord(pts, R * .085, s);
+  }
+
+  const disc = fctx.createRadialGradient(cx - R * .3, cy - R * .3, R * .1, cx, cy, R);
+  disc.addColorStop(0, '#fff3b0'); disc.addColorStop(.6, '#ffc23d'); disc.addColorStop(1, '#ff8a12');
+  fctx.fillStyle = disc;
+  fctx.beginPath(); fctx.arc(cx, cy, R, 0, Math.PI * 2); fctx.fill();
+
+  const spiral = [];
+  for (let j = 0; j <= 260; j++) {
+    const u = j / 260, a = u * Math.PI * 2 * 4.2 - spin * 2, r = R * .9 * u;
+    spiral.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  cord(spiral, R * .07, s * .85);
+}
+
+// Тучи расползаются в стороны по мере того, как выходит солнце
+function drawClouds() {
+  const w = ease(warm);
+  if (w > .995) return;
+  for (const c of clouds) {
+    const x = c.x + c.side * w * W * .9;
+    const g = fctx.createRadialGradient(x, c.y, 0, x, c.y, c.r);
+    g.addColorStop(0, `rgba(120,128,138,${.11 * (1 - w)})`);
+    g.addColorStop(1, 'rgba(120,128,138,0)');
+    fctx.fillStyle = g; fctx.fillRect(0, 0, W, H);
+  }
+}
+
+let last = performance.now(), rainAcc = 0;
+function frame(t) {
+  const dt = Math.min(t - last, 100); last = t;
+  if (!done) {
+    warm = holding ? Math.min(1, warm + dt / HOLD_MS) : Math.max(0, warm - dt / 9000);
+    barFill.style.width = warm * 100 + '%';
+    if (warm >= 1) finish();
+  }
+  rainAcc += dt;
+  while (rainAcc > 50) { rainStep(); rainAcc -= 50; }
+  fctx.clearRect(0, 0, W, H);
+  drawClouds();
+  drawSun(t);
+  requestAnimationFrame(frame);
+}
+
+async function typeInto(el, text, speed) {
+  el.classList.add('typing');
+  for (const ch of text) {
+    el.textContent += ch;
+    await sleep(ch === '\n' ? 500 : speed);
+  }
+  el.classList.remove('typing');
+}
+
+async function intro() {
+  await sleep(700);
+  for (const line of INTRO) {
+    const div = document.createElement('div');
+    term.appendChild(div);
+    await typeInto(div, line, 38);
+    await sleep(450);
+  }
+  ready = true;
+  hint.classList.add('on');
+}
+
+async function finish() {
+  done = true; holding = false;
+  hint.classList.remove('on');
+  term.style.opacity = 0;
+  document.getElementById('msg').classList.add('on');
+  await sleep(900);
+  const title = document.getElementById('title');
+  title.style.whiteSpace = 'pre-line';
+  await typeInto(title, MESSAGE, 70);
+  await sleep(600);
+  document.getElementById('sign').classList.add('on');
+}
+
+const press = e => { if (ready && !done) { holding = true; e.preventDefault(); } };
+const release = () => { holding = false; };
+addEventListener('pointerdown', press);
+addEventListener('pointerup', release);
+addEventListener('pointercancel', release);
+addEventListener('blur', release);
+addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') press(e); });
+addEventListener('keyup', release);
+addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('resize', resize);
+
+resize();
+requestAnimationFrame(frame);
+intro();
+</script>
+</body>
+</html>
