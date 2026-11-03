@@ -1,7 +1,8 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" translate="no">
 <head>
 <meta charset="utf-8">
+<meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Заряд 1%</title>
 <meta name="theme-color" content="#f2efe9">
@@ -61,7 +62,22 @@ const LEVELS = [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 const bc = document.getElementById('battery'), bx = bc.getContext('2d');
 const rc = document.getElementById('ring'), rx = rc.getContext('2d');
-const pctEl = document.getElementById('pct'), noteEl = document.getElementById('note'), btn = document.getElementById('btn');
+const pctEl = document.getElementById('pct'), btn = document.getElementById('btn');
+let noteTimer;
+
+// Каждая фраза — новый элемент целиком: так старый текст не может «прилипнуть»
+// к новому, даже если расширение браузера или переводчик правят страницу
+function showNote(text) {
+  const old = document.getElementById('note');
+  old.style.opacity = 0;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => {
+    const p = document.createElement('p');
+    p.id = 'note'; p.style.opacity = 0; p.textContent = text;
+    document.getElementById('note').replaceWith(p);
+    requestAnimationFrame(() => requestAnimationFrame(() => { p.style.opacity = 1; }));
+  }, 350);
+}
 let step = 0, shown = .01, target = .01, BW, BH, RW;
 
 function fit(c, ctx) {
@@ -145,14 +161,13 @@ function frame(t) {
 
 btn.addEventListener('click', () => {
   if (step >= NOTES.length) return;
-  noteEl.style.opacity = 0;
   const note = NOTES[step];
   step++;
   target = LEVELS[step] / 100;
   pctEl.textContent = LEVELS[step] + '%';
   pctEl.classList.toggle('low', LEVELS[step] < 20);
   navigator.vibrate?.(15);
-  setTimeout(() => { noteEl.textContent = note; noteEl.style.opacity = 1; }, 350);
+  showNote(note);
   if (step === NOTES.length) {
     btn.textContent = 'заряжено ✓'; btn.disabled = true;
     setTimeout(() => {
