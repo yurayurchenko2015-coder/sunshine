@@ -8,8 +8,9 @@
 <meta name="theme-color" content="#f2efe9">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden;background:#f2efe9;color:#141414;font-family:Georgia,"Times New Roman",serif;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.08)),repeating-linear-gradient(0deg,rgba(0,0,0,.012) 0 1px,transparent 1px 3px)}
+html,body{height:100%;overflow:hidden;color:#141414;font-family:Georgia,"Times New Roman",serif;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+/* Текстура бумаги — фоном, а не слоем поверх: слой поверх ломал перерисовку текста в Safari */
+html{background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.04)),repeating-linear-gradient(0deg,rgba(0,0,0,.006) 0 1px,transparent 1px 3px),#f2efe9}
 .scene{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(14px,3vh,26px);padding:24px 16px;text-align:center;transition:opacity 1.4s}
 .hidden{opacity:0;pointer-events:none}
 .kicker{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:clamp(11px,3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#6b6760}
@@ -18,7 +19,7 @@ canvas{display:block}
 #battery{width:min(86vw,520px);height:calc(min(86vw,520px) * .42)}
 #pct{font-size:clamp(44px,13vw,78px);line-height:1;font-variant-numeric:tabular-nums;transition:color .6s}
 #pct.low{color:#c8102e}
-#note{min-height:3.2em;max-width:520px;font-style:italic;font-size:clamp(17px,4.6vw,22px);line-height:1.45;transition:opacity .35s}
+#note{will-change:opacity;min-height:3.2em;max-width:520px;font-style:italic;font-size:clamp(17px,4.6vw,22px);line-height:1.45;transition:opacity .35s}
 button{font:inherit;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:clamp(13px,3.6vw,15px);letter-spacing:.14em;text-transform:uppercase;color:#141414;background:transparent;border:2px solid #141414;border-radius:999px;padding:14px 28px;cursor:pointer;transition:background .2s,color .2s,transform .1s}
 button:hover{background:#141414;color:#f2efe9}
 button:active{transform:scale(.96)}
