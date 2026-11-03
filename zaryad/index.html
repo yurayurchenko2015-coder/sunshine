@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Заряд 1%</title>
+<meta name="theme-color" content="#f2efe9">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#f2efe9;color:#141414;font-family:Georgia,"Times New Roman",serif;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.08)),repeating-linear-gradient(0deg,rgba(0,0,0,.012) 0 1px,transparent 1px 3px)}
+.scene{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(14px,3vh,26px);padding:24px 16px;text-align:center;transition:opacity 1.4s}
+.hidden{opacity:0;pointer-events:none}
+.kicker{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:clamp(11px,3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:#6b6760}
+h1{font-weight:400;font-style:italic;font-size:clamp(24px,6.5vw,40px);line-height:1.2}
+canvas{display:block}
+#battery{width:min(86vw,520px);height:calc(min(86vw,520px) * .42)}
+#pct{font-size:clamp(44px,13vw,78px);line-height:1;font-variant-numeric:tabular-nums;transition:color .6s}
+#pct.low{color:#c8102e}
+#note{min-height:3.2em;max-width:520px;font-style:italic;font-size:clamp(17px,4.6vw,22px);line-height:1.45;transition:opacity .35s}
+button{font:inherit;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:clamp(13px,3.6vw,15px);letter-spacing:.14em;text-transform:uppercase;color:#141414;background:transparent;border:2px solid #141414;border-radius:999px;padding:14px 28px;cursor:pointer;transition:background .2s,color .2s,transform .1s}
+button:hover{background:#141414;color:#f2efe9}
+button:active{transform:scale(.96)}
+button:focus-visible{outline:3px solid #c8102e;outline-offset:3px}
+#ring{width:min(78vw,380px);height:min(78vw,380px)}
+#breath{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:clamp(13px,3.6vw,15px);letter-spacing:.3em;text-transform:uppercase;color:#6b6760;min-height:1.4em}
+.sign{font-style:italic;font-size:clamp(15px,4vw,18px);color:#4a4741}
+.sign b{color:#c8102e;font-weight:400}
+</style>
+</head>
+<body>
+<section class="scene" id="charge">
+  <div class="kicker">Кирилл · уровень заряда</div>
+  <canvas id="battery"></canvas>
+  <div id="pct" class="low">1%</div>
+  <p id="note">Заряд почти на нуле. Сейчас подзарядим.</p>
+  <button id="btn">+ подзарядить</button>
+</section>
+<section class="scene hidden" id="rest">
+  <div class="kicker">заряд 100% · режим «отдых»</div>
+  <h1>Теперь просто выдохни.<br>Я рядом <span style="color:#c8102e">♥</span></h1>
+  <canvas id="ring"></canvas>
+  <div id="breath"></div>
+  <p class="sign">сплетено специально для <b>Mintsev</b></p>
+</section>
+<script>
+// Фразы по одной на каждое нажатие — меняй как хочешь
+const NOTES = [
+  'Эскиз с веером из петель — это шедевр. Серьёзно.',
+  'Ты устал, потому что делаешь то, чего не умеет никто.',
+  'Эта коса из шнура выглядит так, будто её сплела сама ночь.',
+  'Сейчас можно ничего не делать. Правда можно.',
+  'Стакан воды. Прямо сейчас. Я подожду.',
+  'Я тобой горжусь.',
+  'Обнимаю. Крепко. Долго.',
+  'Подпись Mintsev — уже знак качества.',
+  'Мир подождёт, а маски никуда не убегут.',
+  'Ты у меня самый.',
+];
+const LEVELS = [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+
+const bc = document.getElementById('battery'), bx = bc.getContext('2d');
+const rc = document.getElementById('ring'), rx = rc.getContext('2d');
+const pctEl = document.getElementById('pct'), noteEl = document.getElementById('note'), btn = document.getElementById('btn');
+let step = 0, shown = .01, target = .01, BW, BH, RW;
+
+function fit(c, ctx) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), r = c.getBoundingClientRect();
+  c.width = r.width * dpr; c.height = r.height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [r.width, r.height];
+}
+function resize() { [BW, BH] = fit(bc, bx); [RW] = fit(rc, rx); }
+
+// Шнур: чёрное тело, графитовая середина, блик и лёгкая «скрутка»
+function rope(ctx, pts, w) {
+  if (pts.length < 2) return;
+  const path = () => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); };
+  ctx.lineCap = ctx.lineJoin = 'round';
+  path(); ctx.strokeStyle = '#0c0c0c'; ctx.lineWidth = w; ctx.stroke();
+  path(); ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = w * .55; ctx.stroke();
+  ctx.save(); ctx.setLineDash([w * .3, w * .4]);
+  path(); ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = w * .75; ctx.stroke();
+  ctx.restore();
+  ctx.save(); ctx.translate(-w * .16, -w * .16);
+  path(); ctx.strokeStyle = 'rgba(200,200,200,.22)'; ctx.lineWidth = w * .12; ctx.stroke();
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+function drawBattery(t) {
+  bx.clearRect(0, 0, BW, BH);
+  const nub = BW * .045, x0 = 3, y0 = 3, w = BW - nub - 8, h = BH - 6;
+  bx.lineWidth = 3; bx.strokeStyle = '#141414';
+  roundRect(bx, x0, y0, w, h, h * .16); bx.stroke();
+  bx.fillStyle = '#141414';
+  roundRect(bx, x0 + w + 2, y0 + h * .32, nub, h * .36, nub * .35); bx.fill();
+
+  // Коса из двух зеркальных трохоид — петли как в его плетении
+  const pad = h * .14, ix = x0 + pad, iw = w - pad * 2, cy = y0 + h / 2;
+  const d = (h / 2 - pad) * .62, loops = Math.max(4, Math.round((iw - 2 * d) / (d * .85)));
+  const Rf = (iw - 2 * d) / (2 * Math.PI * loops), tMax = 2 * Math.PI * loops * shown;
+  const lw = Math.max(5, h * .085);
+  for (const dir of [1, -1]) {
+    const pts = [];
+    for (let s = 0; s <= tMax; s += .08) pts.push([ix + d + Rf * s - d * Math.sin(s), cy + dir * d * Math.cos(s)]);
+    rope(bx, pts, lw);
+  }
+  if (shown >= .999) {
+    bx.globalAlpha = .25 + .25 * Math.sin(t / 300);
+    bx.lineWidth = 6; bx.strokeStyle = '#c8102e';
+    roundRect(bx, x0, y0, w, h, h * .16); bx.stroke();
+    bx.globalAlpha = 1;
+  }
+}
+
+// Кольцо из петель, которое «дышит»: 4 секунды вдох, 4 — выдох
+function drawRing(t) {
+  rx.clearRect(0, 0, RW, RW);
+  const phase = (t % 8000) / 8000, k = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+  const c = RW / 2, Rr = RW * (.27 + .07 * k), K = 12, R = Rr / K, d = R * 2.8;
+  const pts = [];
+  for (let s = 0; s <= 2 * Math.PI * K + .1; s += .05) {
+    const a = (R * s - d * Math.sin(s)) / Rr + t * .00005, r = Rr + d * Math.cos(s);
+    pts.push([c + Math.cos(a) * r, c + Math.sin(a) * r]);
+  }
+  rope(rx, pts, Math.max(5, RW * .022));
+  rx.beginPath(); rx.arc(c, c, Rr * .35, 0, Math.PI * 2);
+  rx.fillStyle = `rgba(200,16,46,${.12 + .2 * k})`; rx.fill();
+  document.getElementById('breath').textContent = phase < .5 ? 'вдох' : 'выдох';
+}
+
+let resting = false;
+function frame(t) {
+  shown += (target - shown) * .06;
+  if (Math.abs(target - shown) < .001) shown = target;
+  drawBattery(t);
+  if (resting) drawRing(t);
+  requestAnimationFrame(frame);
+}
+
+btn.addEventListener('click', () => {
+  if (step >= NOTES.length) return;
+  noteEl.style.opacity = 0;
+  const note = NOTES[step];
+  step++;
+  target = LEVELS[step] / 100;
+  pctEl.textContent = LEVELS[step] + '%';
+  pctEl.classList.toggle('low', LEVELS[step] < 20);
+  navigator.vibrate?.(15);
+  setTimeout(() => { noteEl.textContent = note; noteEl.style.opacity = 1; }, 350);
+  if (step === NOTES.length) {
+    btn.textContent = 'заряжено ✓'; btn.disabled = true;
+    setTimeout(() => {
+      document.getElementById('charge').classList.add('hidden');
+      document.getElementById('rest').classList.remove('hidden');
+      resting = true;
+    }, 4200);
+  }
+});
+
+addEventListener('resize', resize);
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
